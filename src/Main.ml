@@ -1,62 +1,79 @@
-(* This line opens the Tea.App modules into the current scope for Program access functions and types *)
-open Tea.App
+open Tea
+open Chess
 
-(* This opens the Elm-style virtual-dom functions and types into the current scope *)
-open Tea.Html
-
-(* Let's create a new type here to be our main message type that is passed around *)
-type msg =
-  | Increment  (* This will be our message to increment the counter *)
-  | Decrement  (* This will be our message to decrement the counter *)
-  | Reset      (* This will be our message to reset the counter to 0 *)
-  | Set of int (* This will be out message to set the counter to a specific value *)
-  [@@bs.deriving {accessors}] (* This is a nice quality-of-life addon from Bucklescript, it will generate function names for each constructor name, optional, but nice to cut down on code, this is unused in this example but good to have regardless *)
-
-(* This is optional for such a simple example, but it is good to have an `init` function to define your initial model default values, the model for Counter is just an integer *)
-let init () = 4
-
-(* This is the central message handler, it takes the model as the first argument *)
-let update model = function (* These should be simple enough to be self-explanatory, mutate the model based on the message, easy to read and follow *)
-  | Increment -> model + 1
-  | Decrement -> model - 1
-  | Reset -> 0
-  | Set v -> v
-
-(* This is just a helper function for the view, a simple function that returns a button based on some argument *)
-let view_button title msg =
-  button
-    [ onClick msg
-    ]
-    [ text title
-    ]
-
-(* This is the main callback to generate the virtual-dom.
-  This returns a virtual-dom node that becomes the view, only changes from call-to-call are set on the real DOM for efficiency, this is also only called once per frame even with many messages sent in within that frame, otherwise does nothing *)
-let view model =
-  div
-    []
-    [ span
-        [ style "text-weight" "bold" ]
-        [ text (string_of_int model) ]
-    ; br []
-    ; view_button "Increment" Increment
-    ; br []
-    ; view_button "Decrement" Decrement
-    ; br []
-    ; view_button "Set to 42" (Set 42)
-    ; br []
-    ; if model <> 0 then view_button "Reset" Reset else noNode
-    ]
-
-(* This is the main function, it can be named anything you want but `main` is traditional.
-  The Program returned here has a set of callbacks that can easily be called from
-  Bucklescript or from javascript for running this main attached to an element,
-  or even to pass a message into the event loop.  You can even expose the
-  constructors to the messages to javascript via the above [@@bs.deriving {accessors}]
-  attribute on the `msg` type or manually, that way even javascript can use it safely. *)
-let main =
-  beginnerProgram { (* The beginnerProgram just takes a set model state and the update and view functions *)
-    model = init (); (* Since model is a set value here, we call our init function to generate that value *)
-    update;
-    view;
+type model =
+  { position : position
+  ; orientation: color
   }
+
+type msg =
+  | Flip_board
+  | Random_button
+  | Random_move of move
+
+let init () =
+  { position = init_position
+  ; orientation = White
+  }, Cmd.none
+
+let update model = function
+  | Flip_board ->
+    { model with
+      orientation = opposite_color model.orientation },
+    Cmd.none
+  | _ -> model, Cmd.none
+
+let board_view model =
+  let open Html in
+  let files, ranks =
+    match model.orientation with
+    | White -> [0; 1; 2; 3; 4; 5; 6; 7], [7; 6; 5; 4; 3; 2; 1; 0]
+    | Black -> [7; 6; 5; 4; 3; 2; 1; 0], [0; 1; 2; 3; 4; 5; 6; 7] in
+
+  let rank_view rank =
+
+    let square_view rank file =
+      let piece_view =
+        match model.position.ar.(file).(rank) with
+        | Piece (piece_type, color) ->
+          node "cb-piece"
+            [ classList
+                [ string_of_color color, true
+                ; string_of_piece_type piece_type, true
+                ]
+            ] []
+        | Empty -> noNode in
+      node "cb-square" [] [piece_view] in
+
+    List.map (square_view rank) files
+    |> node "cb-row" [] in
+
+  List.map rank_view ranks
+  |> node "cb-board" []
+
+let view model =
+  let open Html in
+  div []
+    [ board_view model
+    ; p [] [ Printf.sprintf "Move %d.  It is %s's move."
+               model.position.number
+               (match model.position.turn with | Black -> "Black"
+                                               | White -> "White")
+             |> text
+           ]
+    ; p [] [ button
+               [ onClick Flip_board ]
+               [ text "Flip board" ]
+           ; button
+               [ onClick Random_button ]
+               [ text "Make a random move!" ]
+           ]
+    ]
+
+let main =
+  App.standardProgram
+    { init
+    ; update
+    ; view
+    ; subscriptions = (fun _ -> Sub.none)
+    }
